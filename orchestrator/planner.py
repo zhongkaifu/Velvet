@@ -48,14 +48,19 @@ class LLMOrchestrator:
         prompt = self.build_prompt(task, available_nodes)
         completion = self.client.responses.create(
             model=self.model,
-            messages=[
+            input=[
                 {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
             max_output_tokens=800,
         )
-        message = completion.output_parsed
-        code = getattr(message, "content", "") if message else ""
+        parsed = getattr(completion, "output_parsed", None)
+        if isinstance(parsed, str):
+            code = parsed
+        elif parsed is not None:
+            code = getattr(parsed, "content", "") or str(parsed)
+        else:
+            code = getattr(completion, "output_text", "")
         rationale = "Generated workflow using available activation nodes."
         return PlannedWorkflow(code=code, rationale=rationale)
 
