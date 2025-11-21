@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import ast
+import copy
 
 
 @dataclass
@@ -109,9 +110,18 @@ class WorkflowDAG:
 
 def _literal_eval_node(node: ast.AST, *, label: str) -> Any:
     """Safely evaluate AST literals with friendlier error messages."""
+    # Be tolerant of identifiers that the LLM may leave unquoted (``foo``
+    # instead of ``"foo"``). Treat them as literal strings rather than
+    # attempting to resolve them as variables.
+    class _NamesToConstants(ast.NodeTransformer):
+        def visit_Name(self, name_node: ast.Name) -> ast.AST:  # type: ignore[override]
+            return ast.copy_location(ast.Constant(name_node.id), name_node)
+
+    sanitized = _NamesToConstants().visit(copy.deepcopy(node))
+    ast.fix_missing_locations(sanitized)
 
     try:
-        return ast.literal_eval(node)
+        return ast.literal_eval(sanitized)
     except Exception as exc:  # pragma: no cover - defensive error path
         raise ValueError(f"Unable to evaluate {label} from workflow code") from exc
 
