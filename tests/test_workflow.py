@@ -39,6 +39,17 @@ dag.add_node(intro)
         node = dag.nodes["intro"]
         self.assertEqual(node.action, "intro")
 
+    def test_treats_unquoted_identifiers_as_strings(self) -> None:
+        code = """
+from orchestrator.workflow import WorkflowDAG, WorkflowNode
+
+dag = WorkflowDAG()
+dag.add_node(WorkflowNode("status_update", params={"channel": slack_channel}))
+"""
+        dag = parse_workflow_code(code)
+        node = dag.nodes["status_update"]
+        self.assertEqual(node.params, {"channel": "slack_channel"})
+
 
 if __name__ == "__main__":
     unittest.main()
