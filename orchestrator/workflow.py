@@ -154,6 +154,12 @@ def _parse_workflow_node_call(call: ast.Call, *, default_name: str | None = None
     if name is None:
         name = default_name
 
+    # Default the action to the node name when not explicitly provided. This
+    # makes the parser tolerant of minimal WorkflowNode declarations where only
+    # a name is supplied.
+    if action is None and name is not None:
+        action = name
+
     missing = [
         field
         for field, value in (("name", name), ("action", action))
