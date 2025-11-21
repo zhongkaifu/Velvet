@@ -170,12 +170,17 @@ def parse_workflow_code(code: str) -> WorkflowDAG:
     module = ast.parse(code)
 
     dag_names: Set[str] = set()
+    named_nodes: Dict[str, WorkflowNode] = {}
     for stmt in module.body:
         if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
             if _is_name(stmt.value.func, "WorkflowDAG"):
                 for target in stmt.targets:
                     if isinstance(target, ast.Name):
                         dag_names.add(target.id)
+            elif _is_name(stmt.value.func, "WorkflowNode"):
+                for target in stmt.targets:
+                    if isinstance(target, ast.Name):
+                        named_nodes[target.id] = _parse_workflow_node_call(stmt.value)
 
     if not dag_names:
         raise ValueError("No WorkflowDAG instance found in the provided code")
@@ -196,10 +201,15 @@ def parse_workflow_code(code: str) -> WorkflowDAG:
         if _is_dag_method_call(call, dag_names, "add_node"):
             if not call.args:
                 raise ValueError("add_node must receive a WorkflowNode instance")
-            node_call = call.args[0]
-            if not isinstance(node_call, ast.Call):
-                raise ValueError("add_node expects a WorkflowNode constructor call")
-            node = _parse_workflow_node_call(node_call)
+            node_ref = call.args[0]
+            if isinstance(node_ref, ast.Call):
+                node = _parse_workflow_node_call(node_ref)
+            elif isinstance(node_ref, ast.Name) and node_ref.id in named_nodes:
+                node = named_nodes[node_ref.id]
+            else:
+                raise ValueError(
+                    "add_node expects a WorkflowNode constructor call or named instance"
+                )
             dag.add_node(node)
         elif _is_dag_method_call(call, dag_names, "add_edge"):
             if len(call.args) < 2:
