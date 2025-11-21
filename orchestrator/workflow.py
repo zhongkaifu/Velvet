@@ -128,7 +128,7 @@ def _is_dag_method_call(call: ast.Call, dag_names: Set[str], method: str) -> boo
     return call.func.value.id in dag_names and call.func.attr == method
 
 
-def _parse_workflow_node_call(call: ast.Call) -> WorkflowNode:
+def _parse_workflow_node_call(call: ast.Call, *, default_name: str | None = None) -> WorkflowNode:
     if not _is_name(call.func, "WorkflowNode"):
         raise ValueError("add_node must wrap a WorkflowNode construction")
 
@@ -151,8 +151,17 @@ def _parse_workflow_node_call(call: ast.Call) -> WorkflowNode:
         elif kw.arg == "params":
             params = _literal_eval_node(kw.value, label="node params")
 
-    if name is None or action is None:
-        raise ValueError("WorkflowNode requires both name and action values")
+    if name is None:
+        name = default_name
+
+    missing = [
+        field
+        for field, value in (("name", name), ("action", action))
+        if value is None
+    ]
+    if missing:
+        missing_fields = ", ".join(missing)
+        raise ValueError(f"WorkflowNode requires values for: {missing_fields}")
     if not isinstance(params, dict):
         raise ValueError("WorkflowNode params must be a dictionary")
 
@@ -180,7 +189,9 @@ def parse_workflow_code(code: str) -> WorkflowDAG:
             elif _is_name(stmt.value.func, "WorkflowNode"):
                 for target in stmt.targets:
                     if isinstance(target, ast.Name):
-                        named_nodes[target.id] = _parse_workflow_node_call(stmt.value)
+                        named_nodes[target.id] = _parse_workflow_node_call(
+                            stmt.value, default_name=target.id
+                        )
 
     if not dag_names:
         raise ValueError("No WorkflowDAG instance found in the provided code")
