@@ -106,3 +106,57 @@ def fetch_calendar_events(date: str) -> Dict[str, Any]:
     """Example utility: fetch events for a date from a calendar system."""
 
     return {"type": "calendar_lookup", "date": date}
+
+
+def conditional_check(condition: str, *, expected: bool = True, details: Optional[str] = None) -> Dict[str, Any]:
+    """Represent a conditional evaluation within a workflow.
+
+    Args:
+        condition: Human-readable condition to evaluate.
+        expected: The anticipated truthiness of the condition.
+        details: Optional additional context about the condition.
+    """
+
+    payload: Dict[str, Any] = {
+        "type": "conditional_check",
+        "condition": condition,
+        "expected": expected,
+    }
+    if details is not None:
+        payload["details"] = details
+    return payload
+
+
+def loop_check(loop_name: str, *, iteration: int, limit: int) -> Dict[str, Any]:
+    """Track loop progress for guardrails and logging."""
+
+    status = "continue" if iteration < limit else "stop"
+    return {
+        "type": "loop_check",
+        "loop": loop_name,
+        "iteration": iteration,
+        "limit": limit,
+        "status": status,
+    }
+
+
+def user_approval_check(step: str, *, approver: str, message: str) -> Dict[str, Any]:
+    """Represent a manual approval gate before continuing a workflow."""
+
+    return {
+        "type": "user_approval_check",
+        "step": step,
+        "approver": approver,
+        "message": message,
+    }
+
+
+def time_based_trigger(timestamp: str, *, timezone: str = "UTC", window_minutes: Optional[int] = None) -> Dict[str, Any]:
+    """Describe a time-based activation for scheduling workflows."""
+
+    return {
+        "type": "time_based_trigger",
+        "timestamp": timestamp,
+        "timezone": timezone,
+        "window_minutes": window_minutes,
+    }

@@ -28,6 +28,10 @@ available_nodes = [
     "send_message(recipient, body)",
     "send_email(to, subject, body)",
     "make_call(phone_number, script)",
+    "conditional_check(condition, expected)",
+    "loop_check(loop_name, iteration, limit)",
+    "user_approval_check(step, approver, message)",
+    "time_based_trigger(timestamp)",
 ]
 
 orchestrator = LLMOrchestrator(model="gpt-4o-mini")
