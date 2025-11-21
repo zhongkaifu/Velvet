@@ -95,7 +95,10 @@ def generate_workflow_queries(task: str, *, variations: int = 3) -> List[str]:
 
 
 def build_workflow_plan(
-    query: str, available_nodes: Iterable[str], *, orchestrator: LLMOrchestrator
+    query: str,
+    available_nodes: Iterable[str],
+    *,
+    orchestrator: LLMOrchestrator,
 ) -> PlannedWorkflow:
     """Create workflow code for a single query using an LLM orchestrator."""
 
@@ -115,6 +118,31 @@ def validate_workflow_plan(plan: PlannedWorkflow, query: str) -> WorkflowPlanRes
         )
 
 
+def build_and_validate_workflow_plan(
+    query: str,
+    available_nodes: Iterable[str],
+    *,
+    orchestrator: LLMOrchestrator,
+    max_attempts: int = 3,
+) -> WorkflowPlanResult:
+    """Iteratively build a workflow plan, repairing until it compiles."""
+
+    attempt = 1
+    plan = build_workflow_plan(query, available_nodes, orchestrator=orchestrator)
+    result = validate_workflow_plan(plan, query)
+    while not result.compiled and attempt < max_attempts:
+        plan = orchestrator.revise_workflow(
+            query,
+            available_nodes,
+            previous_code=plan.code,
+            error_message=result.error or "Unknown compilation error",
+        )
+        result = validate_workflow_plan(plan, query)
+        attempt += 1
+
+    return result
+
+
 def run_end_to_end(
     task: str,
     available_nodes: Iterable[str],
@@ -130,8 +158,13 @@ def run_end_to_end(
 
     plans: List[WorkflowPlanResult] = []
     for query in generate_workflow_queries(task):
-        plan = build_workflow_plan(query, available_nodes, orchestrator=orchestrator)
-        plans.append(validate_workflow_plan(plan, query))
+        plans.append(
+            build_and_validate_workflow_plan(
+                query,
+                available_nodes,
+                orchestrator=orchestrator,
+            )
+        )
 
     return WorkflowBuildReport(environment=env_path, installed=list(dependencies), plans=plans)
 
@@ -140,6 +173,7 @@ __all__ = [
     "WorkflowPlanResult",
     "WorkflowBuildReport",
     "build_workflow_plan",
+    "build_and_validate_workflow_plan",
     "create_virtualenv",
     "generate_workflow_queries",
     "install_dependencies",

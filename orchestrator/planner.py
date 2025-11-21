@@ -10,7 +10,8 @@ from .workflow import WorkflowDAG, WorkflowNode, parse_workflow_code
 DEFAULT_SYSTEM_PROMPT = """You are a workflow planner. Build Python code that wires activation
 nodes into an executable DAG. Use the WorkflowDAG and nodes from the
 `orchestrator` package. Always create named WorkflowNode instances and
-connect them in execution order."""
+connect them in execution order. Ensure the Python you return compiles
+without syntax errors."""
 
 
 @dataclass
@@ -42,6 +43,16 @@ class LLMOrchestrator:
             "Return valid Python that builds a WorkflowDAG named `dag` and populates it."
         )
 
+    def _extract_code(self, completion: object) -> str:
+        """Extract Python source from an OpenAI response payload."""
+
+        parsed = getattr(completion, "output_parsed", None)
+        if isinstance(parsed, str):
+            return parsed
+        if parsed is not None:
+            return getattr(parsed, "content", "") or str(parsed)
+        return getattr(completion, "output_text", "")
+
     def plan_workflow(self, task: str, available_nodes: Iterable[str]) -> PlannedWorkflow:
         """Ask GPT to assemble Python code for a workflow DAG."""
 
@@ -54,14 +65,43 @@ class LLMOrchestrator:
             ],
             max_output_tokens=800,
         )
-        parsed = getattr(completion, "output_parsed", None)
-        if isinstance(parsed, str):
-            code = parsed
-        elif parsed is not None:
-            code = getattr(parsed, "content", "") or str(parsed)
-        else:
-            code = getattr(completion, "output_text", "")
+        code = self._extract_code(completion)
         rationale = "Generated workflow using available activation nodes."
+        return PlannedWorkflow(code=code, rationale=rationale)
+
+    def revise_workflow(
+        self,
+        task: str,
+        available_nodes: Iterable[str],
+        *,
+        previous_code: str,
+        error_message: str,
+    ) -> PlannedWorkflow:
+        """Request a corrected workflow plan when compilation fails."""
+
+        prompt = self.build_prompt(task, available_nodes)
+        messages = [
+            {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": previous_code},
+            {
+                "role": "user",
+                "content": (
+                    "The previous workflow code failed to compile. "
+                    "Fix the syntax or structural issues so the code compiles and builds a valid WorkflowDAG.\n"
+                    f"Compilation error: {error_message}\n"
+                    "Please return the corrected Python workflow code."
+                ),
+            },
+        ]
+
+        completion = self.client.responses.create(
+            model=self.model,
+            input=messages,
+            max_output_tokens=800,
+        )
+        code = self._extract_code(completion)
+        rationale = "Revised workflow after addressing compilation error."
         return PlannedWorkflow(code=code, rationale=rationale)
 
     def materialize_dag(self, plan: PlannedWorkflow) -> WorkflowDAG:
