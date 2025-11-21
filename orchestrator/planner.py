@@ -48,8 +48,8 @@ class LLMOrchestrator:
             "Return valid Python that builds a WorkflowDAG named `dag` and populates it."
         )
 
-    def _extract_code(self, completion: object) -> str:
-        """Extract Python source from an OpenAI response payload."""
+    def _response_text(self, completion: object) -> str:
+        """Retrieve the raw text content from an LLM completion."""
 
         parsed = getattr(completion, "output_parsed", None)
         if isinstance(parsed, str):
@@ -59,7 +59,21 @@ class LLMOrchestrator:
         else:
             raw = getattr(completion, "output_text", "")
 
-        code = raw.strip()
+        return (raw if isinstance(raw, str) else str(raw)).strip()
+
+    def _log_completion_output(self, completion: object, *, label: str) -> None:
+        """Log the complete LLM response text for transparency."""
+
+        raw_text = self._response_text(completion)
+        if raw_text:
+            logger.info("%s LLM output:\n%s", label, raw_text)
+        else:
+            logger.info("%s LLM output was empty", label)
+
+    def _extract_code(self, completion: object) -> str:
+        """Extract Python source from an OpenAI response payload."""
+
+        code = self._response_text(completion)
 
         fenced_blocks = re.findall(r"```(?:python)?\n?(.*?)```", code, flags=re.DOTALL)
         if fenced_blocks:
@@ -86,6 +100,7 @@ class LLMOrchestrator:
             ],
             max_output_tokens=800,
         )
+        self._log_completion_output(completion, label="Initial workflow plan")
         code = self._extract_code(completion)
         rationale = "Generated workflow using available activation nodes."
         logger.debug("Generated workflow code preview: %s", code[:200])
@@ -124,6 +139,7 @@ class LLMOrchestrator:
             input=messages,
             max_output_tokens=800,
         )
+        self._log_completion_output(completion, label="Revised workflow plan")
         code = self._extract_code(completion)
         rationale = "Revised workflow after addressing compilation error."
         logger.info("Received revised workflow code for task '%s'", task)
