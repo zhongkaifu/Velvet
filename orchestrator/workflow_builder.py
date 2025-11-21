@@ -125,7 +125,9 @@ def validate_workflow_plan(plan: PlannedWorkflow, query: str) -> WorkflowPlanRes
         logger.info("Workflow plan for '%s' compiled and parsed successfully", query)
         return WorkflowPlanResult(query=query, code=plan.code, compiled=True, dag=dag)
     except Exception as exc:
-        logger.warning("Workflow plan for '%s' failed validation: %s", query, exc)
+        logger.error(
+            "Workflow plan for '%s' failed validation: %s", query, exc, exc_info=True
+        )
         return WorkflowPlanResult(
             query=query, code=plan.code, compiled=False, dag=None, error=str(exc)
         )
