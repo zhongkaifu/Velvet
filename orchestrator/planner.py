@@ -1,10 +1,15 @@
 """Orchestrator that uses GPT to assemble executable workflow code."""
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from .workflow import WorkflowDAG, WorkflowNode, parse_workflow_code
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SYSTEM_PROMPT = """You are a workflow planner. Build Python code that wires activation
@@ -34,7 +39,7 @@ class LLMOrchestrator:
         else:
             self.client = client
 
-    def build_prompt(self, task: str, available_nodes: Iterable[str]) -> str:
+    def build_prompt(self, task: str, available_nodes: Sequence[str]) -> str:
         readable_nodes = "\n".join(f"- {name}" for name in available_nodes)
         return (
             f"Task: {task}\n"
@@ -48,15 +53,31 @@ class LLMOrchestrator:
 
         parsed = getattr(completion, "output_parsed", None)
         if isinstance(parsed, str):
-            return parsed
-        if parsed is not None:
-            return getattr(parsed, "content", "") or str(parsed)
-        return getattr(completion, "output_text", "")
+            raw = parsed
+        elif parsed is not None:
+            raw = getattr(parsed, "content", "") or str(parsed)
+        else:
+            raw = getattr(completion, "output_text", "")
+
+        code = raw.strip()
+
+        fenced_blocks = re.findall(r"```(?:python)?\n?(.*?)```", code, flags=re.DOTALL)
+        if fenced_blocks:
+            code = "\n\n".join(block.strip() for block in fenced_blocks if block.strip())
+
+        logger.debug("Extracted workflow code with length %d characters", len(code))
+        return code
 
     def plan_workflow(self, task: str, available_nodes: Iterable[str]) -> PlannedWorkflow:
         """Ask GPT to assemble Python code for a workflow DAG."""
 
-        prompt = self.build_prompt(task, available_nodes)
+        available_nodes_list = list(available_nodes)
+        prompt = self.build_prompt(task, available_nodes_list)
+        logger.info(
+            "Requesting workflow plan for task '%s' using %d available nodes",
+            task,
+            len(available_nodes_list),
+        )
         completion = self.client.responses.create(
             model=self.model,
             input=[
@@ -67,6 +88,8 @@ class LLMOrchestrator:
         )
         code = self._extract_code(completion)
         rationale = "Generated workflow using available activation nodes."
+        logger.debug("Generated workflow code preview: %s", code[:200])
+        logger.info("Full generated workflow code for task '%s':\n%s", task, code)
         return PlannedWorkflow(code=code, rationale=rationale)
 
     def revise_workflow(
@@ -79,7 +102,8 @@ class LLMOrchestrator:
     ) -> PlannedWorkflow:
         """Request a corrected workflow plan when compilation fails."""
 
-        prompt = self.build_prompt(task, available_nodes)
+        available_nodes_list = list(available_nodes)
+        prompt = self.build_prompt(task, available_nodes_list)
         messages = [
             {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -102,6 +126,8 @@ class LLMOrchestrator:
         )
         code = self._extract_code(completion)
         rationale = "Revised workflow after addressing compilation error."
+        logger.info("Received revised workflow code for task '%s'", task)
+        logger.info("Full revised workflow code for task '%s':\n%s", task, code)
         return PlannedWorkflow(code=code, rationale=rationale)
 
     def materialize_dag(self, plan: PlannedWorkflow) -> WorkflowDAG:
