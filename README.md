@@ -62,3 +62,26 @@ print(f"DAG exported to {image_path}")
 ```
 
 The activation nodes in `orchestrator.nodes` expose clear parameters for non-technical users and can be combined in GPT-generated workflows or manually constructed DAGs.
+
+## End-to-end workflow validation
+
+The `orchestrator.workflow_builder` module offers a harness to mirror the integration steps described in testing scenarios: create a virtual environment, install dependencies, generate workflow queries, and validate that the resulting Python code compiles to a `WorkflowDAG`.
+
+```python
+from orchestrator import LLMOrchestrator, run_end_to_end
+
+report = run_end_to_end(
+    "Plan a morning status update",
+    [
+        "generate_summary(text)",
+        "send_message(recipient, body)",
+    ],
+    env_dir=".venv",
+    dependencies=["graphviz"],
+    orchestrator=LLMOrchestrator(model="gpt-4o-mini"),
+)
+
+print(f"Success rate: {report.success_rate:.0%}")
+for plan in report.plans:
+    print(plan.query, plan.node_count, plan.compiled)
+```
