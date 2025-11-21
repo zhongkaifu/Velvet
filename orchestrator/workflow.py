@@ -122,8 +122,16 @@ def _literal_eval_node(node: ast.AST, *, label: str) -> Any:
 
     try:
         return ast.literal_eval(sanitized)
-    except Exception as exc:  # pragma: no cover - defensive error path
-        raise ValueError(f"Unable to evaluate {label} from workflow code") from exc
+    except Exception:
+        try:
+            # Fall back to a stringified representation so we can still parse
+            # non-literal inputs (for example function calls) without blowing
+            # up during workflow validation.
+            return ast.unparse(node)
+        except Exception as exc:  # pragma: no cover - defensive error path
+            raise ValueError(
+                f"Unable to evaluate {label} from workflow code"
+            ) from exc
 
 
 def _is_name(node: ast.AST, name: str) -> bool:
